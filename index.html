@@ -95,28 +95,6 @@ body{
   font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:5px;
 }
 
-.status-row{display:flex;justify-content:center;align-items:center;gap:12px;margin:22px 0 18px;flex-wrap:wrap;}
-
-.watch-live-btn{
-  display:flex;align-items:center;gap:7px;
-  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;
-  letter-spacing:1.5px;text-transform:uppercase;
-  color:#fff;text-decoration:none;
-  background:linear-gradient(180deg, #ff5c5c, #d81f1f);
-  padding:6px 16px 6px 12px;border-radius:20px;
-  box-shadow:0 2px 8px rgba(0,0,0,0.35);
-  transition:transform 0.15s ease, box-shadow 0.15s ease;
-}
-.watch-live-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.45);}
-.watch-live-btn svg{flex-shrink:0;color:#fff;}
-
-.viewer-pill{
-  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;
-  letter-spacing:1px;text-transform:uppercase;color:var(--muted);
-  border:1px solid var(--line);padding:6px 14px;border-radius:20px;
-  white-space:nowrap;
-}
-
 .tab-nav{
   display:flex;justify-content:center;margin-bottom:26px;
 }
@@ -135,24 +113,6 @@ body{
   background:linear-gradient(180deg, var(--gold-light), var(--gold));
   color:var(--navy-deep);
   box-shadow:0 2px 8px rgba(0,0,0,0.35);
-}
-.status-pill{
-  display:flex;align-items:center;gap:8px;
-  font-family:'Barlow Condensed',sans-serif;
-  font-size:12px;padding:6px 18px;border-radius:20px;font-weight:700;
-  letter-spacing:2px;text-transform:uppercase;
-  border:1px solid var(--line);background:var(--navy-mid);
-}
-.status-pill .dot{width:7px;height:7px;border-radius:50%;}
-.status-pill.live .dot{background:#4ade80;box-shadow:0 0 0 0 rgba(74,222,128,0.5);animation:pulse-dot 1.8s infinite;}
-.status-pill.live{color:#4ade80;}
-.status-pill.down .dot{background:var(--red);}
-.status-pill.down{color:#ff8a97;}
-
-@keyframes pulse-dot{
-  0%{box-shadow:0 0 0 0 rgba(74,222,128,0.5);}
-  70%{box-shadow:0 0 0 7px rgba(74,222,128,0);}
-  100%{box-shadow:0 0 0 0 rgba(74,222,128,0);}
 }
 
 /* ===== Mat scoreboard bars, matching the bottom bars in the overlay ===== */
@@ -402,13 +362,8 @@ footer{
   .crest{width:76px;height:62px;}
   .crest .crest-logo{width:52px;margin-top:-6px;}
   .tab-btn{padding:7px 16px;font-size:12px;}
-  .status-row{gap:8px;}
-  .watch-live-btn{font-size:11px;padding:5px 12px 5px 10px;}
 }
 
-@media (prefers-reduced-motion: reduce){
-  .status-pill .dot{animation:none;}
-}
 </style>
 </head>
 <body>
@@ -427,16 +382,6 @@ footer{
   <div class="title-band">
     <div class="title">Live Status</div>
     <div class="subtitle">Collegiate Jiu-Jitsu League</div>
-  </div>
-
-  <div class="status-row">
-    <div class="status-pill down" id="statusPill"><span class="dot"></span><span id="statusText">Connecting</span></div>
-    <a class="watch-live-btn" href="https://www.youtube.com/@CollegiateJJLeague" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 17" width="16" height="16"><path fill="currentColor" d="M23.5 2.5a3 3 0 0 0-2.1-2.1C19.5 0 12 0 12 0S4.5 0 2.6.4A3 3 0 0 0 .5 2.5 31 31 0 0 0 0 8.5a31 31 0 0 0 .5 6 3 3 0 0 0 2.1 2.1c1.9.4 9.4.4 9.4.4s7.5 0 9.4-.4a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-6 31 31 0 0 0-.5-6zM9.5 12V5l6.3 3.5z"/></svg>
-      Watch Live
-    </a>
-    <div class="viewer-pill" id="streamViewerCount" style="display:none;"></div>
-    <div class="viewer-pill" id="viewerCount">— watching</div>
   </div>
 
   <div class="tab-nav">
@@ -535,83 +480,7 @@ function connectHistory() {
   }, 25000);
 }
 
-// Live count of people currently viewing this status page — purely a socket
-// count on the relay's 'presence' channel, no external API involved.
-function connectPresence() {
-  const sock = new WebSocket(RELAY_URL);
-  sock.onopen = function() {
-    sock.send(JSON.stringify({ type: 'join', channel: 'presence' }));
-  };
-  sock.onmessage = function(e) {
-    try {
-      const d = JSON.parse(e.data);
-      if (d.type === 'presence_count') {
-        const el = document.getElementById('viewerCount');
-        if (el) el.textContent = d.count + ' watching';
-      }
-    } catch(err) {}
-  };
-  sock.onclose = function() {
-    setTimeout(connectPresence, 5000);
-  };
-  sock.onerror = function() { sock.close(); };
-
-  setInterval(function() {
-    if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'ping' }));
-  }, 25000);
-}
-
-// Drives the main LIVE/OFFLINE pill from the actual YouTube stream status
-// (relay-checked), and shows the stream's own concurrent viewer count when live.
-function connectYoutubeStatus() {
-  const sock = new WebSocket(RELAY_URL);
-  sock.onopen = function() {
-    sock.send(JSON.stringify({ type: 'join', channel: 'youtube_status' }));
-  };
-  sock.onmessage = function(e) {
-    try {
-      const d = JSON.parse(e.data);
-      if (d.type === 'youtube_status') {
-        updateYoutubeStatus(d.isLive, d.viewers);
-      }
-    } catch(err) {}
-  };
-  sock.onclose = function() {
-    setTimeout(connectYoutubeStatus, 5000);
-  };
-  sock.onerror = function() { sock.close(); };
-
-  setInterval(function() {
-    if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'ping' }));
-  }, 25000);
-}
-
-function updateYoutubeStatus(isLive, viewers) {
-  const pill = document.getElementById('statusPill');
-  const statusText = document.getElementById('statusText');
-  const streamViewers = document.getElementById('streamViewerCount');
-
-  if (isLive) {
-    statusText.textContent = 'Live';
-    pill.className = 'status-pill live';
-  } else {
-    statusText.textContent = 'Offline';
-    pill.className = 'status-pill down';
-  }
-
-  if (streamViewers) {
-    if (isLive && viewers !== null && viewers !== undefined) {
-      streamViewers.style.display = '';
-      streamViewers.textContent = viewers.toLocaleString() + ' on stream';
-    } else {
-      streamViewers.style.display = 'none';
-    }
-  }
-}
-
-// Note: the LIVE/OFFLINE pill is now driven by updateYoutubeStatus() (the
-// actual stream status), not relay connectivity. This just re-renders mats
-// when a mat channel connects/disconnects.
+// This just re-renders mats when a mat channel connects/disconnects.
 function updateStatus() {
   render();
 }
@@ -772,8 +641,6 @@ function matchHistoryHtml(boutId, matches){
 
 for (let i = 1; i <= 4; i++) connectMat(i);
 connectHistory();
-connectPresence();
-connectYoutubeStatus();
 
 // Periodic sweep: clear any mat whose last update is older than STALE_MATCH_MS.
 setInterval(function() {
