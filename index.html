@@ -552,7 +552,11 @@ function render() {
     mats.appendChild(block);
   }
 
-  renderHistory();
+  // NOTE: renderHistory() is intentionally NOT called here. Match history has
+  // its own independent update source (the 'history' channel's history_update
+  // message, and switchTab()) — calling it here too meant every ordinary
+  // scoreboard tick (once/sec while a timer is running) rebuilt the history
+  // panel from scratch and force-closed any bout a viewer had expanded.
 }
 
 function pipRow(count, cls){
@@ -572,6 +576,19 @@ function infractionGroup(stalling, penalties, right){
 
 function renderHistory(){
   const historyMats = document.getElementById('historyMats');
+
+  // Remember what the viewer currently has expanded (by bout number and by
+  // individual point-log id) so a rebuild can restore it instead of
+  // silently closing whatever they were reading.
+  const openBouts = new Set();
+  historyMats.querySelectorAll('details.match-log[open]').forEach(d => {
+    if (d.dataset.boutId) openBouts.add(d.dataset.boutId);
+  });
+  const openPointLogs = new Set();
+  historyMats.querySelectorAll('.point-log-list.show').forEach(el => {
+    if (el.id) openPointLogs.add(el.id);
+  });
+
   historyMats.innerHTML = '';
 
   if (!Array.isArray(latestBouts) || latestBouts.length === 0) {
@@ -592,6 +609,19 @@ function renderHistory(){
     section.innerHTML = `<div class="history-mat-title">${title}</div>${matchHistoryHtml(b.boutNum, b.matches)}`;
     historyMats.appendChild(section);
   });
+
+  // Restore whatever was open before the rebuild.
+  if (openBouts.size > 0) {
+    historyMats.querySelectorAll('details.match-log').forEach(d => {
+      if (d.dataset.boutId && openBouts.has(d.dataset.boutId)) d.setAttribute('open', '');
+    });
+  }
+  if (openPointLogs.size > 0) {
+    openPointLogs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('show');
+    });
+  }
 }
 
 function switchTab(tab){
@@ -615,7 +645,7 @@ function switchTab(tab){
 
 function matchHistoryHtml(boutId, matches){
   if (!Array.isArray(matches) || matches.length === 0) {
-    return `<details class="match-log"><summary>Match History <span class="count">0</span></summary><div class="no-history">No matches completed yet in this bout.</div></details>`;
+    return `<details class="match-log" data-bout-id="${boutId}"><summary>Match History <span class="count">0</span></summary><div class="no-history">No matches completed yet in this bout.</div></details>`;
   }
   const rows = matches.map((r, idx) => {
     const logId = 'pl-' + boutId + '-' + idx;
@@ -636,7 +666,7 @@ function matchHistoryHtml(boutId, matches){
       </div>
     `;
   }).join('');
-  return `<details class="match-log"><summary>Match History <span class="count">${matches.length}</span></summary><div class="log-entries">${rows}</div></details>`;
+  return `<details class="match-log" data-bout-id="${boutId}"><summary>Match History <span class="count">${matches.length}</span></summary><div class="log-entries">${rows}</div></details>`;
 }
 
 for (let i = 1; i <= 4; i++) connectMat(i);
