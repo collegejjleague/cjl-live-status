@@ -577,23 +577,48 @@ function connectHistory() {
 }
 
 // ===== Brackets =====
-// Fixed list of divisions the tournament can produce brackets for. Shown as
-// pills even before any data has arrived for a given division.
+// Each division's round structure, mirroring the ROUNDS/TITLE/IS_CHAMP config
+// baked into the existing standalone bracket overlay files (cjl_bracket_*.html)
+// so this tab reads the exact same data those files already do.
 const DIVISIONS = [
-  { id: 'mens_champ',   label: "Men's Championship" },
-  { id: 'mens_con',     label: "Men's Consolation" },
-  { id: 'womens_champ', label: "Women's Championship" },
-  { id: 'womens_con',   label: "Women's Consolation" },
-  { id: 'supermatches', label: 'Supermatches' }
+  { id: 'mens_champ', label: "Men's Championship", isSuper: false, isChamp: true, placeLabel: '1st / 2nd',
+    rounds: [
+      { label: 'Round 1', bouts: ['Bout 1','Bout 2','Bout 3','Bout 4'] },
+      { label: 'Semifinals', bouts: ['Bout 5','Bout 6'] },
+      { label: 'Final', bouts: ['Bout 11'] }
+    ] },
+  { id: 'mens_con', label: "Men's Consolation", isSuper: false, isChamp: false, placeLabel: '3rd / 4th',
+    rounds: [
+      { label: 'Consolation R1', bouts: ['Bout 7','Bout 8'] },
+      { label: 'Consolation R2', bouts: ['Bout 9','Bout 10'] },
+      { label: '3rd/4th Place', bouts: ['Bout 12'] }
+    ] },
+  { id: 'womens_champ', label: "Women's Championship", isSuper: false, isChamp: true, placeLabel: '1st / 2nd',
+    rounds: [
+      { label: 'Round 1', bouts: ['Bout W1','Bout W2','Bout W3','Bout W4'] },
+      { label: 'Semifinals', bouts: ['Bout W5','Bout W6'] },
+      { label: 'Final', bouts: ['Bout W11'] }
+    ] },
+  { id: 'womens_con', label: "Women's Consolation", isSuper: false, isChamp: false, placeLabel: '3rd / 4th',
+    rounds: [
+      { label: 'Consolation R1', bouts: ['Bout W7','Bout W8'] },
+      { label: 'Consolation R2', bouts: ['Bout W9','Bout W10'] },
+      { label: '3rd/4th Place', bouts: ['Bout W12'] }
+    ] },
+  { id: 'supermatches', label: 'Supermatches', isSuper: true, isChamp: false, placeLabel: '', rounds: [] }
 ];
-const bracketData = {}; // keyed by division id -> latest { data } payload from the relay
+
+// Flat array of every bout across every division, exactly as pushed by the
+// control panel: [{ bout: 'Bout 1', team1, team2, team1Score, team2Score,
+// winner, status }, ...]. No per-division tagging on the wire — each bracket
+// view just looks up the bout names it cares about, same as the standalone
+// overlay files already do.
+let allBouts = [];
 let currentDivision = DIVISIONS[0].id;
 
-// Subscribes to the relay's shared 'bracket' channel. Same one-socket-per-page
-// pattern as connectHistory() above — the relay broadcasts whatever an
-// operator pushes, and (per server.js) replays the latest cached payload for
-// each division to newly-joined clients so a page opened mid-tournament isn't
-// blank until the next update.
+// Subscribes to the relay's shared 'bracket' channel — the same channel and
+// message shape the control panel and the existing bracket overlay files
+// already use, so nothing on the sending side needs to change.
 function connectBracket() {
   const sock = new WebSocket(RELAY_URL);
   sock.onopen = function() {
@@ -602,9 +627,9 @@ function connectBracket() {
   sock.onmessage = function(e) {
     try {
       const d = JSON.parse(e.data);
-      if (d.type === 'bracket' && d.division) {
-        bracketData[d.division] = d.data;
-        if (d.division === currentDivision) renderBrackets();
+      if (d.type === 'bracket' && d.data) {
+        allBouts = d.data;
+        renderBrackets();
       }
     } catch(err) {}
   };
@@ -630,24 +655,37 @@ function renderDivisionPills() {
   ).join('');
 }
 
+function findBout(name) {
+  return allBouts.find(b => b.bout === name);
+}
+
+function isTbdTeam(name) {
+  return !name || name === 'TBD' || name.startsWith('W-') || name.startsWith('L-');
+}
+
 function teamCell(name, score, isWinner, isTbd) {
   return `
     <div class="bracket-team${isWinner ? ' winner' : ''}">
       <span class="bracket-team-name${isWinner ? ' winner' : ''}${isTbd ? ' tbd' : ''}">${isTbd ? 'TBD' : (name || '—')}</span>
-      ${score !== undefined && score !== null && !isTbd ? `<span class="bracket-team-score">${score}</span>` : ''}
+      ${score ? `<span class="bracket-team-score">${score}</span>` : ''}
     </div>
   `;
 }
 
-function boutCard(bout) {
-  const tbd1 = !bout.team1, tbd2 = !bout.team2;
-  const complete = bout.winner === 1 || bout.winner === 2;
+function boutCard(boutName) {
+  const bout = findBout(boutName);
+  const t1 = bout ? bout.team1 : null;
+  const t2 = bout ? bout.team2 : null;
+  const s1 = bout && bout.team1Score ? bout.team1Score : '';
+  const s2 = bout && bout.team2Score ? bout.team2Score : '';
+  const w = bout ? bout.winner : '';
+  const complete = !!(bout && bout.status === 'Complete');
   return `
     <div class="bracket-bout${complete ? ' complete' : ''}">
-      ${bout.label ? `<div class="bracket-bout-header">${bout.label}</div>` : ''}
-      ${teamCell(bout.team1, bout.score1, bout.winner === 1, tbd1)}
-      ${teamCell(bout.team2, bout.score2, bout.winner === 2, tbd2)}
-      ${bout.status ? `<div class="bracket-result-tag">${bout.status}</div>` : ''}
+      <div class="bracket-bout-header">${boutName}</div>
+      ${teamCell(t1, s1, !!w && w === t1, isTbdTeam(t1))}
+      ${teamCell(t2, s2, !!w && w === t2, isTbdTeam(t2))}
+      ${complete ? `<div class="bracket-result-tag">✓ ${w} wins</div>` : ''}
     </div>
   `;
 }
@@ -655,38 +693,44 @@ function boutCard(bout) {
 function renderBrackets() {
   renderDivisionPills();
   const container = document.getElementById('bracketContent');
-  const div = bracketData[currentDivision];
+  const div = DIVISIONS.find(d => d.id === currentDivision);
 
-  if (!div) {
+  if (!allBouts.length) {
     container.innerHTML = '<div class="unavailable"><div class="big">⏸</div><div class="msg">No bracket data yet.</div><div class="sub">This bracket will fill in once the tournament starts.</div></div>';
     return;
   }
 
-  // Supermatches are a flat set of bouts, not an elimination tree.
-  if (Array.isArray(div.bouts)) {
-    container.innerHTML = `<div class="supermatch-grid">${div.bouts.map(boutCard).join('')}</div>`;
+  if (div.isSuper) {
+    container.innerHTML = `<div class="supermatch-grid">${['Super 1','Super 2','Super 3'].map(boutCard).join('')}</div>`;
     return;
   }
 
-  if (Array.isArray(div.rounds)) {
-    const roundsHtml = div.rounds.map(r => `
-      <div class="bracket-round">
-        <div class="bracket-round-label">${r.label || ''}</div>
-        ${(r.bouts || []).map(boutCard).join('')}
-      </div>
-    `).join('');
-    const championHtml = div.champion ? `
+  const roundsHtml = div.rounds.map(r => `
+    <div class="bracket-round">
+      <div class="bracket-round-label">${r.label}</div>
+      ${r.bouts.map(boutCard).join('')}
+    </div>
+  `).join('');
+
+  const finalRound = div.rounds[div.rounds.length - 1];
+  const finalBout = finalRound ? findBout(finalRound.bouts[0]) : null;
+  let placeHtml = '';
+  if (finalBout && finalBout.winner) {
+    placeHtml = div.isChamp ? `
       <div class="bracket-champion">
         <div class="trophy">🏆</div>
         <div class="label">Champion</div>
-        <div class="name">${div.champion}</div>
+        <div class="name">${finalBout.winner}</div>
       </div>
-    ` : '';
-    container.innerHTML = `<div class="bracket-scroll"><div class="bracket-rounds">${roundsHtml}${championHtml}</div></div>`;
-    return;
+    ` : `
+      <div class="bracket-champion">
+        <div class="label">${div.placeLabel}</div>
+        <div class="name">${finalBout.winner} wins</div>
+      </div>
+    `;
   }
 
-  container.innerHTML = '<div class="unavailable"><div class="big">⏸</div><div class="msg">No bracket data yet.</div><div class="sub">This bracket will fill in once the tournament starts.</div></div>';
+  container.innerHTML = `<div class="bracket-scroll"><div class="bracket-rounds">${roundsHtml}${placeHtml}</div></div>`;
 }
 
 // This just re-renders mats when a mat channel connects/disconnects.
@@ -760,8 +804,6 @@ function render() {
     `;
     mats.appendChild(block);
   }
-
-  renderHistory();
 }
 
 function pipRow(count, cls){
