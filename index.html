@@ -300,6 +300,93 @@ body{
 .unavailable .msg{font-size:14px;color:var(--text);}
 .unavailable .sub{font-size:12px;margin-top:6px;}
 
+/* ===== Bracket tab ===== */
+.division-pills{
+  display:flex;gap:8px;overflow-x:auto;padding:2px 2px 14px;
+  scrollbar-width:none;
+}
+.division-pills::-webkit-scrollbar{display:none;}
+.division-pill{
+  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;white-space:nowrap;
+  background:var(--navy-mid);border:1px solid var(--line);color:var(--muted);
+  padding:8px 16px;border-radius:20px;cursor:pointer;transition:all 0.2s ease;
+  flex-shrink:0;
+}
+.division-pill:hover{color:var(--text);}
+.division-pill.active{
+  background:linear-gradient(180deg, var(--gold-light), var(--gold));
+  color:var(--navy-deep);box-shadow:0 2px 8px rgba(0,0,0,0.35);border-color:transparent;
+}
+
+.bracket-scroll{
+  overflow-x:auto;padding-bottom:10px;
+  -webkit-overflow-scrolling:touch;
+}
+.bracket-rounds{
+  display:flex;gap:22px;align-items:stretch;min-width:min-content;
+}
+.bracket-round{
+  display:flex;flex-direction:column;justify-content:space-around;
+  gap:14px;min-width:220px;
+}
+.bracket-round-label{
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;color:var(--gold);
+  text-align:center;padding-bottom:8px;border-bottom:1px solid var(--line);
+  margin-bottom:2px;
+}
+.bracket-bout{
+  background:linear-gradient(180deg, var(--navy-mid), var(--navy));
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  box-shadow:var(--shadow-soft);
+}
+.bracket-bout.complete{border-color:var(--gold-dark);}
+.bracket-bout-header{
+  font-family:'Barlow',sans-serif;font-size:9px;color:var(--muted);
+  letter-spacing:1.5px;text-transform:uppercase;padding:6px 12px 4px;
+  background:rgba(0,0,0,0.2);
+}
+.bracket-team{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 12px;border-top:1px solid rgba(232,184,75,0.12);gap:10px;
+}
+.bracket-team:first-of-type{border-top:none;}
+.bracket-team.winner{background:rgba(232,184,75,0.08);}
+.bracket-team-name{
+  font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;
+  color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.bracket-team-name.winner{color:var(--text);font-weight:800;}
+.bracket-team-name.tbd{color:#555b7a;font-style:italic;font-weight:400;}
+.bracket-team-score{
+  font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:800;
+  color:var(--text);flex-shrink:0;min-width:20px;text-align:right;
+}
+.bracket-result-tag{
+  font-size:9px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;
+  padding:5px 12px;border-top:1px solid rgba(232,184,75,0.12);
+}
+
+.bracket-champion{
+  background:linear-gradient(135deg, rgba(232,184,75,0.16), rgba(232,184,75,0.04));
+  border:1px solid var(--gold-dark);border-radius:14px;
+  padding:22px 26px;text-align:center;margin:auto 0;min-width:200px;
+}
+.bracket-champion .trophy{font-size:30px;margin-bottom:6px;}
+.bracket-champion .label{
+  font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;
+}
+.bracket-champion .name{
+  font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;color:var(--gold-light);
+}
+
+/* Supermatches: card grid instead of a bracket tree */
+.supermatch-grid{
+  display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;
+}
+.supermatch-grid .bracket-bout{min-width:0;}
+
 footer{
   text-align:center;margin-top:36px;font-size:10px;color:#4a5384;
   letter-spacing:2px;text-transform:uppercase;
@@ -362,6 +449,9 @@ footer{
   .crest{width:76px;height:62px;}
   .crest .crest-logo{width:52px;margin-top:-6px;}
   .tab-btn{padding:7px 16px;font-size:12px;}
+
+  .bracket-round{min-width:180px;}
+  .bracket-champion{min-width:160px;padding:18px 20px;}
 }
 
 </style>
@@ -388,6 +478,7 @@ footer{
     <div class="tab-nav-inner">
       <button class="tab-btn active" id="tabLiveBtn" onclick="switchTab('live')">Live</button>
       <button class="tab-btn" id="tabHistoryBtn" onclick="switchTab('history')">Match History</button>
+      <button class="tab-btn" id="tabBracketsBtn" onclick="switchTab('brackets')">Brackets</button>
     </div>
   </div>
 
@@ -400,6 +491,11 @@ footer{
   </div>
 
   <div class="mats" id="historyMats" style="display:none;"></div>
+
+  <div class="mats" id="bracketsView" style="display:none;">
+    <div class="division-pills" id="divisionPills"></div>
+    <div id="bracketContent"></div>
+  </div>
 
   <footer>Real-time mat status</footer>
 </div>
@@ -480,6 +576,119 @@ function connectHistory() {
   }, 25000);
 }
 
+// ===== Brackets =====
+// Fixed list of divisions the tournament can produce brackets for. Shown as
+// pills even before any data has arrived for a given division.
+const DIVISIONS = [
+  { id: 'mens_champ',   label: "Men's Championship" },
+  { id: 'mens_con',     label: "Men's Consolation" },
+  { id: 'womens_champ', label: "Women's Championship" },
+  { id: 'womens_con',   label: "Women's Consolation" },
+  { id: 'supermatches', label: 'Supermatches' }
+];
+const bracketData = {}; // keyed by division id -> latest { data } payload from the relay
+let currentDivision = DIVISIONS[0].id;
+
+// Subscribes to the relay's shared 'bracket' channel. Same one-socket-per-page
+// pattern as connectHistory() above — the relay broadcasts whatever an
+// operator pushes, and (per server.js) replays the latest cached payload for
+// each division to newly-joined clients so a page opened mid-tournament isn't
+// blank until the next update.
+function connectBracket() {
+  const sock = new WebSocket(RELAY_URL);
+  sock.onopen = function() {
+    sock.send(JSON.stringify({ type: 'join', channel: 'bracket' }));
+  };
+  sock.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'bracket' && d.division) {
+        bracketData[d.division] = d.data;
+        if (d.division === currentDivision) renderBrackets();
+      }
+    } catch(err) {}
+  };
+  sock.onclose = function() {
+    setTimeout(connectBracket, 5000);
+  };
+  sock.onerror = function() { sock.close(); };
+
+  setInterval(function() {
+    if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'ping' }));
+  }, 25000);
+}
+
+function selectDivision(id) {
+  currentDivision = id;
+  renderBrackets();
+}
+
+function renderDivisionPills() {
+  const wrap = document.getElementById('divisionPills');
+  wrap.innerHTML = DIVISIONS.map(d =>
+    `<button class="division-pill${d.id === currentDivision ? ' active' : ''}" onclick="selectDivision('${d.id}')">${d.label}</button>`
+  ).join('');
+}
+
+function teamCell(name, score, isWinner, isTbd) {
+  return `
+    <div class="bracket-team${isWinner ? ' winner' : ''}">
+      <span class="bracket-team-name${isWinner ? ' winner' : ''}${isTbd ? ' tbd' : ''}">${isTbd ? 'TBD' : (name || '—')}</span>
+      ${score !== undefined && score !== null && !isTbd ? `<span class="bracket-team-score">${score}</span>` : ''}
+    </div>
+  `;
+}
+
+function boutCard(bout) {
+  const tbd1 = !bout.team1, tbd2 = !bout.team2;
+  const complete = bout.winner === 1 || bout.winner === 2;
+  return `
+    <div class="bracket-bout${complete ? ' complete' : ''}">
+      ${bout.label ? `<div class="bracket-bout-header">${bout.label}</div>` : ''}
+      ${teamCell(bout.team1, bout.score1, bout.winner === 1, tbd1)}
+      ${teamCell(bout.team2, bout.score2, bout.winner === 2, tbd2)}
+      ${bout.status ? `<div class="bracket-result-tag">${bout.status}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderBrackets() {
+  renderDivisionPills();
+  const container = document.getElementById('bracketContent');
+  const div = bracketData[currentDivision];
+
+  if (!div) {
+    container.innerHTML = '<div class="unavailable"><div class="big">⏸</div><div class="msg">No bracket data yet.</div><div class="sub">This bracket will fill in once the tournament starts.</div></div>';
+    return;
+  }
+
+  // Supermatches are a flat set of bouts, not an elimination tree.
+  if (Array.isArray(div.bouts)) {
+    container.innerHTML = `<div class="supermatch-grid">${div.bouts.map(boutCard).join('')}</div>`;
+    return;
+  }
+
+  if (Array.isArray(div.rounds)) {
+    const roundsHtml = div.rounds.map(r => `
+      <div class="bracket-round">
+        <div class="bracket-round-label">${r.label || ''}</div>
+        ${(r.bouts || []).map(boutCard).join('')}
+      </div>
+    `).join('');
+    const championHtml = div.champion ? `
+      <div class="bracket-champion">
+        <div class="trophy">🏆</div>
+        <div class="label">Champion</div>
+        <div class="name">${div.champion}</div>
+      </div>
+    ` : '';
+    container.innerHTML = `<div class="bracket-scroll"><div class="bracket-rounds">${roundsHtml}${championHtml}</div></div>`;
+    return;
+  }
+
+  container.innerHTML = '<div class="unavailable"><div class="big">⏸</div><div class="msg">No bracket data yet.</div><div class="sub">This bracket will fill in once the tournament starts.</div></div>';
+}
+
 // This just re-renders mats when a mat channel connects/disconnects.
 function updateStatus() {
   render();
@@ -552,11 +761,7 @@ function render() {
     mats.appendChild(block);
   }
 
-  // NOTE: renderHistory() is intentionally NOT called here. Match history has
-  // its own independent update source (the 'history' channel's history_update
-  // message, and switchTab()) — calling it here too meant every ordinary
-  // scoreboard tick (once/sec while a timer is running) rebuilt the history
-  // panel from scratch and force-closed any bout a viewer had expanded.
+  renderHistory();
 }
 
 function pipRow(count, cls){
@@ -576,19 +781,6 @@ function infractionGroup(stalling, penalties, right){
 
 function renderHistory(){
   const historyMats = document.getElementById('historyMats');
-
-  // Remember what the viewer currently has expanded (by bout number and by
-  // individual point-log id) so a rebuild can restore it instead of
-  // silently closing whatever they were reading.
-  const openBouts = new Set();
-  historyMats.querySelectorAll('details.match-log[open]').forEach(d => {
-    if (d.dataset.boutId) openBouts.add(d.dataset.boutId);
-  });
-  const openPointLogs = new Set();
-  historyMats.querySelectorAll('.point-log-list.show').forEach(el => {
-    if (el.id) openPointLogs.add(el.id);
-  });
-
   historyMats.innerHTML = '';
 
   if (!Array.isArray(latestBouts) || latestBouts.length === 0) {
@@ -609,43 +801,40 @@ function renderHistory(){
     section.innerHTML = `<div class="history-mat-title">${title}</div>${matchHistoryHtml(b.boutNum, b.matches)}`;
     historyMats.appendChild(section);
   });
-
-  // Restore whatever was open before the rebuild.
-  if (openBouts.size > 0) {
-    historyMats.querySelectorAll('details.match-log').forEach(d => {
-      if (d.dataset.boutId && openBouts.has(d.dataset.boutId)) d.setAttribute('open', '');
-    });
-  }
-  if (openPointLogs.size > 0) {
-    openPointLogs.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.add('show');
-    });
-  }
 }
 
 function switchTab(tab){
   const liveBtn = document.getElementById('tabLiveBtn');
   const historyBtn = document.getElementById('tabHistoryBtn');
+  const bracketsBtn = document.getElementById('tabBracketsBtn');
   const mats = document.getElementById('mats');
   const historyMats = document.getElementById('historyMats');
+  const bracketsView = document.getElementById('bracketsView');
+
+  liveBtn.classList.remove('active');
+  historyBtn.classList.remove('active');
+  bracketsBtn.classList.remove('active');
+  mats.style.display = 'none';
+  historyMats.style.display = 'none';
+  bracketsView.style.display = 'none';
+
   if (tab === 'live') {
     liveBtn.classList.add('active');
-    historyBtn.classList.remove('active');
     mats.style.display = 'flex';
-    historyMats.style.display = 'none';
-  } else {
+  } else if (tab === 'history') {
     historyBtn.classList.add('active');
-    liveBtn.classList.remove('active');
-    mats.style.display = 'none';
     historyMats.style.display = 'flex';
     renderHistory();
+  } else {
+    bracketsBtn.classList.add('active');
+    bracketsView.style.display = 'flex';
+    renderBrackets();
   }
 }
 
 function matchHistoryHtml(boutId, matches){
   if (!Array.isArray(matches) || matches.length === 0) {
-    return `<details class="match-log" data-bout-id="${boutId}"><summary>Match History <span class="count">0</span></summary><div class="no-history">No matches completed yet in this bout.</div></details>`;
+    return `<details class="match-log"><summary>Match History <span class="count">0</span></summary><div class="no-history">No matches completed yet in this bout.</div></details>`;
   }
   const rows = matches.map((r, idx) => {
     const logId = 'pl-' + boutId + '-' + idx;
@@ -666,11 +855,13 @@ function matchHistoryHtml(boutId, matches){
       </div>
     `;
   }).join('');
-  return `<details class="match-log" data-bout-id="${boutId}"><summary>Match History <span class="count">${matches.length}</span></summary><div class="log-entries">${rows}</div></details>`;
+  return `<details class="match-log"><summary>Match History <span class="count">${matches.length}</span></summary><div class="log-entries">${rows}</div></details>`;
 }
 
 for (let i = 1; i <= 4; i++) connectMat(i);
 connectHistory();
+connectBracket();
+renderDivisionPills();
 
 // Periodic sweep: clear any mat whose last update is older than STALE_MATCH_MS.
 setInterval(function() {
